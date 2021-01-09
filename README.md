@@ -3,16 +3,23 @@
 
 [![CircleCI](https://circleci.com/gh/chrismaltby/gb-studio/tree/develop.svg?style=shield)](https://circleci.com/gh/chrismaltby/gb-studio/tree/develop)
 
-Copyright (c) 2019 Chris Maltby, released under the [MIT license](https://opensource.org/licenses/MIT).
+Copyright (c) 2020 Chris Maltby, released under the [MIT license](https://opensource.org/licenses/MIT).
 
 Twitter: [@maltby](https://www.twitter.com/maltby) 
 
 Reddit: [/r/gbstudio](https://www.reddit.com/r/gbstudio)  
 Discord: [Join Chat](https://discord.gg/bxerKnc)
 
-
 GB Studio is a free and easy to use retro adventure game creator for Game Boy available for Mac, Linux and Windows.
 For more information see the [GB Studio](https://www.gbstudio.dev) site
+
+----
+
+## 🚨 🚨 🚨 Version 2 Beta Available 🚨 🚨 🚨
+
+If you're looking for the GB Studio 2 Beta check out the branch [v2beta](https://github.com/chrismaltby/gb-studio/tree/v2beta) for the latest builds.
+
+----
 
 ![GB Studio](gbstudio.gif)
 
@@ -50,3 +57,4 @@ These builds reflects the latest changes from the `develop` branch and are updat
 
 [![Windows_x86_64](https://img.shields.io/static/v1.svg?label=&message=64%20bit&color=blue&logo=windows&style=for-the-badge&logoColor=white)](https://circleci.com/api/v1.1/project/github/chrismaltby/gb-studio/latest/artifacts/0/builds/gb-studio-develop-windows_x86_64.zip?branch=develop&filter=successful)
 [![Windows_x86](https://img.shields.io/static/v1.svg?label=&message=32%20bit&color=blue&logo=windows&style=for-the-badge&logoColor=white)](https://circleci.com/api/v1.1/project/github/chrismaltby/gb-studio/latest/artifacts/0/builds/gb-studio-develop-windows_x86.zip?branch=develop&filter=successful)
+
