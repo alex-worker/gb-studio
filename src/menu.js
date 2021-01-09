@@ -9,7 +9,9 @@ let menu;
 const buildMenu = async (plugins = []) => {
   // L10N requires app ready to get locale
   // eslint-disable-next-line global-require
-  const l10n = require("./lib/helpers/l10n").default;
+  const l10nHelpers = require("./lib/helpers/l10n");
+  const l10n = l10nHelpers.default;
+  const locales = l10nHelpers.locales;
 
   const template = [
     {
@@ -34,6 +36,22 @@ const buildMenu = async (plugins = []) => {
           accelerator: "CommandOrControl+S",
           click: () => {
             notifyListeners("save");
+          }
+        },
+        {
+          label: l10n("MENU_SAVE_AS"),
+          accelerator: "CommandOrControl+Alt+S",
+          click: () => {
+            notifyListeners("saveAs");
+          }
+        },
+
+        { type: "separator" },
+        {
+          label: l10n("MENU_RELOAD_ASSETS"),
+          accelerator: "CommandOrControl+Shift+R",
+          click: () => {
+            notifyListeners("reloadAssets");
           }
         },
         { type: "separator" },
@@ -94,48 +112,6 @@ const buildMenu = async (plugins = []) => {
               }
             }
           ]
-        },
-        { type: "separator" },
-        {
-          label: l10n("MENU_CART_TYPE"),
-          submenu: [
-            {
-              id: "cart1B",
-              label: "MBC5+RAM+BATTERY",
-              type: "radio",
-              checked: true,
-              click() {
-                notifyListeners("updateSetting", "cartType", "1B");
-              }
-            },
-            {
-              id: "cart03",
-              label: "MBC1+RAM+BATTERY",
-              type: "radio",
-              checked: false,
-              click() {
-                notifyListeners("updateSetting", "cartType", "03");
-              }
-            },
-            {
-              id: "cart1A",
-              label: "MBC5+RAM",
-              type: "radio",
-              checked: false,
-              click() {
-                notifyListeners("updateSetting", "cartType", "1A");
-              }
-            },
-            {
-              id: "cart02",
-              label: "MBC1+RAM",
-              type: "radio",
-              checked: false,
-              click() {
-                notifyListeners("updateSetting", "cartType", "02");
-              }
-            }
-          ]
         }
       ]
     },
@@ -191,6 +167,13 @@ const buildMenu = async (plugins = []) => {
             notifyListeners("section", "build");
           }
         },
+        {
+          label: l10n("MENU_SETTINGS"),
+          accelerator: "CommandOrControl+8",
+          click: () => {
+            notifyListeners("section", "settings");
+          }
+        },
         { type: "separator" },
         {
           label: l10n("MENU_THEME"),
@@ -224,6 +207,34 @@ const buildMenu = async (plugins = []) => {
               }
             }
           ]
+        },
+        {
+          label: l10n("MENU_LANGUAGE"),
+          submenu: [].concat(
+            [
+              {
+                id: "localeDefault",
+                label: l10n("MENU_LANGUAGE_DEFAULT"),
+                type: "checkbox",
+                checked: settings.get("locale") === undefined,
+                click() {
+                  notifyListeners("updateSetting", "locale", undefined);
+                }
+              },
+              { type: "separator" }
+            ],
+            locales.map(locale => {
+              return {
+                id: `locale-${locale}`,
+                label: locale,
+                type: "checkbox",
+                checked: settings.get("locale") === locale,
+                click() {
+                  notifyListeners("updateSetting", "locale", locale);
+                }
+              };
+            })
+          )
         },
         { type: "separator" },
         {
@@ -384,11 +395,13 @@ const listeners = {
   new: [],
   open: [],
   save: [],
+  saveAs: [],
   checkUpdates: [],
   undo: [],
   redo: [],
   section: [],
   zoom: [],
+  reloadAssets: [],
   updateSetting: [],
   run: [],
   build: []

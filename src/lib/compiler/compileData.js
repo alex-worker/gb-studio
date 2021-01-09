@@ -1,6 +1,10 @@
 import { copy } from "fs-extra";
-import uuid from "uuid/v4";
-import BankedData, { MIN_DATA_BANK, GB_MAX_BANK_SIZE } from "./bankedData";
+import BankedData, {
+  MIN_DATA_BANK,
+  GB_MAX_BANK_SIZE,
+  MBC1,
+  MBC5
+} from "./bankedData";
 import {
   walkScenesEvents,
   findSceneEvent,
@@ -29,7 +33,8 @@ import {
   moveSpeedDec,
   animSpeedDec,
   spriteTypeDec,
-  actorFramesPerDir
+  actorFramesPerDir,
+  isMBC1
 } from "./helpers";
 import { textNumLines } from "../helpers/trimlines";
 import { assetFilename } from "../helpers/gbstudio";
@@ -37,7 +42,7 @@ import { assetFilename } from "../helpers/gbstudio";
 const indexById = indexBy("id");
 
 const DATA_PTRS_BANK = 5;
-const NUM_MUSIC_BANKS = 8;
+const NUM_MUSIC_BANKS = 30; // To calculate usable banks if MBC1
 
 export const EVENT_START_DATA_COMPILE = "EVENT_START_DATA_COMPILE";
 export const EVENT_DATA_COMPILE_PROGRESS = "EVENT_DATA_COMPILE_PROGRESS";
@@ -48,6 +53,7 @@ export const EVENT_MSG_PRE_STRINGS = "Preparing strings...";
 export const EVENT_MSG_PRE_IMAGES = "Preparing images...";
 export const EVENT_MSG_PRE_UI_IMAGES = "Preparing ui...";
 export const EVENT_MSG_PRE_SPRITES = "Preparing sprites...";
+export const EVENT_MSG_PRE_AVATARS = "Preparing avatars...";
 export const EVENT_MSG_PRE_SCENES = "Preparing scenes...";
 export const EVENT_MSG_PRE_EVENTS = "Preparing events...";
 export const EVENT_MSG_PRE_MUSIC = "Preparing music...";
@@ -77,9 +83,12 @@ const compile = async (
     warnings
   });
 
+  const cartType = projectData.settings.cartType;
+
   const banked = new BankedData({
     bankSize,
-    bankOffset
+    bankOffset,
+    bankController: isMBC1(cartType) ? MBC1 : MBC5
   });
 
   // Add event data
@@ -95,9 +104,11 @@ const compile = async (
               scenes: precompiled.sceneData,
               music: precompiled.usedMusic,
               sprites: precompiled.usedSprites,
+              avatars: precompiled.usedAvatars,
               backgrounds: precompiled.usedBackgrounds,
               strings: precompiled.strings,
               variables: precompiled.variables,
+              labels: {},
               subScripts,
               entityType,
               entityIndex,
@@ -114,28 +125,72 @@ const compile = async (
     scene.actors.map(bankEntitySubScripts("actor"));
     scene.triggers.map(bankEntitySubScripts("trigger"));
 
+    const compileScript = (
+      script,
+      entityType,
+      entity,
+      entityIndex,
+      alreadyCompiled
+    ) => {
+      return compileEntityEvents(script, {
+        scene,
+        sceneIndex,
+        scenes: precompiled.sceneData,
+        music: precompiled.usedMusic,
+        sprites: precompiled.usedSprites,
+        avatars: precompiled.usedAvatars,
+        backgrounds: precompiled.usedBackgrounds,
+        strings: precompiled.strings,
+        variables: precompiled.variables,
+        labels: {},
+        subScripts,
+        entityType,
+        entityIndex,
+        entity,
+        banked,
+        warnings,
+        output: alreadyCompiled || []
+      });
+    };
+
+    const bankSceneEvents = (scene, sceneIndex) => {
+      const compiledSceneScript = [];
+
+      // Compile start scripts for actors
+      scene.actors.forEach((actor, actorIndex) => {
+        const actorStartScript = (actor.startScript || []).filter(
+          event => event.command !== EVENT_END
+        );
+        compileScript(
+          actorStartScript,
+          "actor",
+          actor,
+          actorIndex,
+          compiledSceneScript
+        );
+        compiledSceneScript.splice(-1);
+      });
+
+      // Compile scene start script
+      compileScript(
+        scene.script,
+        "scene",
+        scene,
+        sceneIndex,
+        compiledSceneScript
+      );
+
+      return banked.push(compiledSceneScript);
+    };
+
     const bankEntityEvents = entityType => (entity, entityIndex) => {
       return banked.push(
-        compileEntityEvents(entity.script, {
-          scene,
-          sceneIndex,
-          scenes: precompiled.sceneData,
-          music: precompiled.usedMusic,
-          sprites: precompiled.usedSprites,
-          backgrounds: precompiled.usedBackgrounds,
-          strings: precompiled.strings,
-          variables: precompiled.variables,
-          subScripts,
-          entityType,
-          entityIndex,
-          entity,
-          banked,
-          warnings
-        })
+        compileScript(entity.script, entityType, entity, entityIndex)
       );
     };
+
     return {
-      start: bankEntityEvents("scene")(scene),
+      start: bankSceneEvents(scene),
       actors: scene.actors.map(bankEntityEvents("actor")),
       triggers: scene.triggers.map(bankEntityEvents("trigger"))
     };
@@ -178,12 +233,17 @@ const compile = async (
   const frameImagePtr = banked.push(precompiled.frameTiles);
   const cursorImagePtr = banked.push(precompiled.cursorTiles);
   const emotesSpritePtr = banked.push(precompiled.emotesSprite);
-
+  
   // Add sprite data
   const spritePtrs = precompiled.usedSprites.map(sprite => {
     return banked.push([].concat(sprite.frames, sprite.data));
   });
 
+  // Add avatar data
+  const avatarPtrs = precompiled.usedAvatars.map(avatar => {
+    return banked.push([].concat(avatar.frames, avatar.data));
+  });
+  
   // Add scene data
   const scenePtrs = precompiled.sceneData.map((scene, sceneIndex) => {
     const sceneImage = precompiled.usedBackgrounds[scene.backgroundIndex];
@@ -198,7 +258,7 @@ const compile = async (
         hi(scene.backgroundIndex),
         lo(scene.backgroundIndex),
         scene.sprites.length,
-        scene.sprites,
+        flatten(scene.sprites.map((spriteIndex)=> [hi(spriteIndex), lo(spriteIndex)])),
         scene.actors.length,
         compileActors(scene.actors, {
           eventPtrs: eventPtrs[sceneIndex].actors,
@@ -218,6 +278,33 @@ const compile = async (
     );
   });
 
+  // Replace ptrs in banked data
+  banked.mutate((data) => {
+    if(typeof data === "number") {
+      return data;
+    }
+    if(typeof data === "string" && data.startsWith("__REPLACE")) {
+      if(data.startsWith("__REPLACE:STRING_BANK:")) {
+        const index = parseInt(data.replace(/.*:/,''), 10);
+        return stringPtrs[index].bank;
+      }
+      if(data.startsWith("__REPLACE:STRING_HI:")) {
+        const index = parseInt(data.replace(/.*:/,''), 10);
+        return hi(stringPtrs[index].offset);
+      }
+      if(data.startsWith("__REPLACE:STRING_LO:")) {
+        const index = parseInt(data.replace(/.*:/,''), 10);
+        return lo(stringPtrs[index].offset);
+      }      
+    }
+    const value = parseInt(data, 10);
+    if(!isNaN(value)) {
+      return value;
+    }
+    warnings(`Non numeric data found while processing banked data "${data}".`);
+    return data;
+  })
+  
   let startSceneIndex = precompiled.sceneData.findIndex(
     m => m.id === projectData.settings.startSceneId
   );
@@ -235,10 +322,10 @@ const compile = async (
     startAnimSpeed = "3"
   } = projectData.settings;
 
-  const bankNums = [...Array(bankOffset + banked.data.length).keys()];
+  const bankNums = banked.exportUsedBankNumbers();
 
-  const bankDataPtrs = bankNums.map(bankNum => {
-    return bankNum >= bankOffset ? `&bank_${bankNum}_data` : 0;
+  const bankDataPtrs = bankNums.map((usedBank, num) => {
+    return usedBank ? `&bank_${num}_data` : 0;
   });
 
   const fixEmptyDataPtrs = ptrs => {
@@ -253,17 +340,23 @@ const compile = async (
     background_bank_ptrs: fixEmptyDataPtrs(backgroundPtrs),
     sprite_bank_ptrs: fixEmptyDataPtrs(spritePtrs),
     scene_bank_ptrs: fixEmptyDataPtrs(scenePtrs),
-    string_bank_ptrs: fixEmptyDataPtrs(stringPtrs)
+    avatar_bank_ptrs: fixEmptyDataPtrs(avatarPtrs)
   };
 
   const bankHeader = banked.exportCHeader(bankOffset);
   const bankData = banked.exportCData(bankOffset);
-  const nextAvailableBank = bankData.length + bankOffset + 1;
+
+  const musicBanks = [];
+  for (let i = 0; i < NUM_MUSIC_BANKS; i++) {
+    banked.currentBank++;
+    musicBanks[i] = banked.getWriteBank();
+  }
 
   const music = precompiled.usedMusic.map((track, index) => {
+    const bank = musicBanks[index % musicBanks.length];
     return {
       ...track,
-      bank: nextAvailableBank + (index % NUM_MUSIC_BANKS)
+      bank
     };
   });
 
@@ -314,7 +407,7 @@ const compile = async (
       })
       .join(`\n`)}\n` +
     `extern const unsigned char (*bank_data_ptrs[])[];\n` +
-    `extern const unsigned char * music_tracks[];\n` +
+    `extern const unsigned int music_tracks[];\n` +
     `extern const unsigned char music_banks[];\n` +
     `extern unsigned char script_variables[${precompiled.variables.length +
       1}];\n${music
@@ -337,13 +430,9 @@ const compile = async (
           .join(",")}\n};\n`;
       })
       .join(`\n`)}\n` +
-    `const unsigned char * music_tracks[] = {\n${music
-      .map(track => `${track.dataName}_Data`)
-      .join(", ") || "0"}, 0` +
+    `const unsigned int music_tracks[] = {\n` +
     `\n};\n\n` +
-    `const unsigned char music_banks[] = {\n${music
-      .map(track => track.bank)
-      .join(", ") || "0"}, 0` +
+    `const unsigned char music_banks[] = {\n` +
     `\n};\n\n` +
     `unsigned char script_variables[${precompiled.variables.length +
       1}] = { 0 };\n`;
@@ -351,12 +440,17 @@ const compile = async (
   output[`banks.h`] = bankHeader;
 
   bankData.forEach((bankDataBank, index) => {
-    output[`bank_${bankOffset + index}.c`] = bankDataBank;
+    const bank = bankDataBank.match(/pragma bank=([0-9]+)/)[1];
+    output[`bank_${bank}.c`] = bankDataBank;
   });
+
+  const maxDataBank = banked.getMaxWriteBank();
 
   return {
     files: output,
-    music
+    music,
+    maxDataBank,
+    musicBanks
   };
 };
 
@@ -410,6 +504,16 @@ const precompile = async (
     }
   );
 
+  progress(EVENT_MSG_PRE_AVATARS);
+  const { usedAvatars } = await precompileAvatars(
+    projectData.spriteSheets,
+    projectData.scenes,
+    projectRoot,
+    {
+      warnings
+    }
+  );
+
   progress(EVENT_MSG_PRE_MUSIC);
   const { usedMusic } = await precompileMusic(
     projectData.scenes,
@@ -442,15 +546,18 @@ const precompile = async (
     fontTiles,
     frameTiles,
     cursorTiles,
-    emotesSprite
+    emotesSprite,
+    usedAvatars
   };
 };
 
 export const precompileVariables = scenes => {
   const variables = [];
-  for (let i = 0; i <= 99; i++) {
+  
+  for (let i=0; i<100; i++) {
     variables.push(String(i));
   }
+
   walkScenesEvents(scenes, cmd => {
     if (eventHasArg(cmd, "variable")) {
       const variable = cmd.args.variable || "0";
@@ -647,6 +754,52 @@ export const precompileSprites = async (
   };
 };
 
+export const precompileAvatars = async (
+  spriteSheets,
+  scenes,
+  projectRoot,
+  { warnings } = {}
+) => {
+  const usedAvatars = spriteSheets.filter(
+    spriteSheet =>
+      scenes.find(
+        scene =>
+          findSceneEvent(scene, event => {
+            return event.args && event.args.avatarId === spriteSheet.id;
+          })
+      )
+  );
+
+  const avatarLookup = indexById(usedAvatars);
+  const avatarData = await Promise.all(
+    usedAvatars.map(async spriteSheet => {
+      const data = await ggbgfx.imageToTilesDataIntArray(
+        assetFilename(projectRoot, "sprites", spriteSheet)
+      );
+      const size = data.length;
+      const frames = Math.ceil(size / 64);
+      if (Math.ceil(size / 64) !== Math.floor(size / 64)) {
+        warnings(
+          `Sprite '${
+            spriteSheet.filename
+          }' has invalid dimensions and may not appear correctly. Must be 16px tall and a multiple of 16px wide.`
+        );
+      }
+
+      return {
+        ...spriteSheet,
+        data,
+        size,
+        frames
+      };
+    })
+  );
+  return {
+    usedAvatars: avatarData,
+    avatarLookup
+  };
+}
+
 export const precompileMusic = (scenes, music) => {
   const usedMusicIds = [];
   walkScenesEvents(scenes, cmd => {
@@ -668,7 +821,7 @@ export const precompileMusic = (scenes, music) => {
     .map((track, index) => {
       return {
         ...track,
-        dataName: `music_${uuid().replace(/-.*/, "")}${index}`
+        dataName: (`music_track_`+ (index + 101) + '_')
       };
     });
   return { usedMusic };

@@ -273,7 +273,7 @@ test("should compile simple project into files object", async () => {
   expect(compiled).toBeInstanceOf(Object);
 });
 
-test("should walk all scene events to build list of used variables (including first 100 by default)", () => {
+test("should walk all scene events to build list of used variables", () => {
   const scenes = [
     {
       id: "1",
@@ -347,7 +347,7 @@ test("should walk all scene events to build list of used variables (including fi
   ];
   const precompiledVariables = precompileVariables(scenes);
   let output = [];
-  for (let i = 0; i < 100; i++) {
+  for(let i=0; i<100; i++) {
     output.push(String(i));
   }
   output.push("109");

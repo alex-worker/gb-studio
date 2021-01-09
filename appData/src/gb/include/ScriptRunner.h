@@ -20,6 +20,7 @@ extern UBYTE script_actor;
 // Max call stack depth
 #define STACK_SIZE 8
 extern UWORD script_stack[STACK_SIZE];
+extern UBYTE script_bank_stack[STACK_SIZE];
 extern UWORD script_start_stack[STACK_SIZE];
 extern UBYTE script_stack_ptr;
 
@@ -108,5 +109,17 @@ void Script_ActorSetFrame_b();
 void Script_ActorSetFlip_b();
 void Script_TextMulti_b();
 void Script_ActorSetFrameToVal_b();
+void Script_VariableAddFlags_b();
+void Script_VariableClearFlags_b();
+void Script_SoundStartTone_b();
+void Script_SoundStopTone_b();
+void Script_SoundPlayBeep_b();
+void Script_SoundPlayCrash_b();
+void Script_SetTimerScript_b();
+void Script_ResetTimer_b();
+void Script_RemoveTimerScript_b();
+void Script_TextWithAvatar_b();
+void Script_TextMenu_b();
+void Script_ActorSetCollisions_b();
 
 #endif

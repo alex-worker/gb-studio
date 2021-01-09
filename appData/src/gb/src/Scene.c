@@ -20,7 +20,7 @@ void SceneRenderActor_b(UBYTE i);
 
 POS map_next_pos;
 VEC2D map_next_dir;
-UBYTE map_next_sprite;
+UWORD map_next_sprite;
 ACTOR actors[MAX_ACTORS];
 TRIGGER triggers[MAX_TRIGGERS];
 UWORD scene_index;
@@ -34,6 +34,11 @@ UBYTE shake_time = 0;
 UBYTE scene_width;
 UBYTE scene_height;
 BANK_PTR input_script_ptrs[NUM_INPUTS] = {{0}};
+UBYTE timer_script_duration = 0;
+UBYTE timer_script_time = 0;
+BANK_PTR timer_script_ptr = {0};
+UBYTE scroll_x;
+UBYTE scroll_y;
 
 void SceneInit()
 {

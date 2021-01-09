@@ -25,15 +25,21 @@ const watchProject = async (
   const uiRoot = `${projectRoot}/assets/ui`;
   const pluginsRoot = `${projectRoot}/plugins`;
 
+  const awaitWriteFinish = {
+    stabilityThreshold: 200,
+    pollInterval: 50
+  };
+
   const pluginSubfolder = filename => {
     return Path.relative(pluginsRoot, filename).split(Path.sep)[1];
   };
 
   const spriteWatcher = chokidar
     .watch(spritesRoot, {
-      ignored: /^.*\.(?!png$)[^.]+$/,
+      ignored: /^.*\.(?!(png|PNG)$)[^.]+$/,
       ignoreInitial: true,
-      persistent: true
+      persistent: true,
+      awaitWriteFinish
     })
     .on("add", onAddSprite)
     .on("change", onChangedSprite)
@@ -41,9 +47,10 @@ const watchProject = async (
 
   const backgroundWatcher = chokidar
     .watch(backgroundsRoot, {
-      ignored: /^.*\.(?!png$)[^.]+$/,
+      ignored: /^.*\.(?!(png|PNG)$)[^.]+$/,
       ignoreInitial: true,
-      persistent: true
+      persistent: true,
+      awaitWriteFinish
     })
     .on("add", onAddBackground)
     .on("change", onChangedBackground)
@@ -53,7 +60,8 @@ const watchProject = async (
     .watch(uiRoot, {
       ignored: /^.*\.(?!png$)[^.]+$/,
       ignoreInitial: true,
-      persistent: true
+      persistent: true,
+      awaitWriteFinish
     })
     .on("add", onAddUI)
     .on("change", onChangedUI)
@@ -61,9 +69,10 @@ const watchProject = async (
 
   const musicWatcher = chokidar
     .watch(musicRoot, {
-      ignored: /^.*\.(?!mod$)[^.]+$/,
+      ignored: /^.*\.(?!(mod|MOD)$)[^.]+$/,
       ignoreInitial: true,
-      persistent: true
+      persistent: true,
+      awaitWriteFinish
     })
     .on("add", onAddMusic)
     .on("change", onChangedMusic)
@@ -71,9 +80,10 @@ const watchProject = async (
 
   const pluginsWatcher = chokidar
     .watch(pluginsRoot, {
-      ignored: /^.*\.(?!(png|mod)$)[^.]+$/,
+      ignored: /^.*\.(?!(png|mod|PNG|MOD)$)[^.]+$/,
       ignoreInitial: true,
-      persistent: true
+      persistent: true,
+      awaitWriteFinish
     })
     .on("add", filename => {
       const subfolder = pluginSubfolder(filename);

@@ -10,6 +10,7 @@ import Path from "path";
 import { stat } from "fs-extra";
 import menu from "./menu";
 import { checkForUpdate } from "./lib/helpers/updateChecker";
+import switchLanguageDialog from "./lib/electron/dialog/switchLanguageDialog";
 
 // Stop app launching during squirrel install
 // eslint-disable-next-line global-require
@@ -183,6 +184,8 @@ const openHelp = async helpPage => {
     shell.openExternal("https://www.gbstudio.dev/docs/ui-elements/");
   } else if (helpPage === "music") {
     shell.openExternal("https://www.gbstudio.dev/docs/music/");
+  } else if (helpPage === "error") {
+    shell.openExternal("https://www.gbstudio.dev/docs/error/");
   }
 };
 
@@ -310,10 +313,9 @@ ipcMain.on("document-unmodified", () => {
 });
 
 ipcMain.on("project-loaded", (event, project) => {
-  const { showCollisions, showConnections, cartType = "1B" } = project.settings;
+  const { showCollisions, showConnections } = project.settings;
   menu.ref().getMenuItemById("showCollisions").checked = showCollisions;
   menu.ref().getMenuItemById("showConnections").checked = showConnections;
-  menu.ref().getMenuItemById(`cart${cartType}`).checked = true;
 });
 
 ipcMain.on("set-menu-plugins", (event, plugins) => {
@@ -362,6 +364,10 @@ menu.on("save", async () => {
   mainWindow && mainWindow.webContents.send("save-project");
 });
 
+menu.on("saveAs", async () => {
+  saveAsProjectPicker();
+});
+
 menu.on("undo", async () => {
   mainWindow && mainWindow.webContents.send("undo");
 });
@@ -372,6 +378,10 @@ menu.on("redo", async () => {
 
 menu.on("section", async section => {
   mainWindow && mainWindow.webContents.send("section", section);
+});
+
+menu.on("reloadAssets", () => {
+  mainWindow && mainWindow.webContents.send("reloadAssets");
 });
 
 menu.on("zoom", zoomType => {
@@ -398,6 +408,13 @@ menu.on("updateSetting", (setting, value) => {
     menu.ref().getMenuItemById("themeDark").checked = value === "dark";
     splashWindow && splashWindow.webContents.send("update-theme", value);
     mainWindow && mainWindow.webContents.send("update-theme", value);
+  } else if (setting === "locale") {
+    const locales = require("./lib/helpers/l10n").locales;
+    menu.ref().getMenuItemById("localeDefault").checked = value === undefined;
+    for (let locale of locales) {
+      menu.ref().getMenuItemById(`locale-${locale}`).checked = value === locale;
+    }
+    switchLanguageDialog();
   } else {
     mainWindow && mainWindow.webContents.send("updateSetting", setting, value);
   }
@@ -452,17 +469,7 @@ const openProject = async projectPath => {
     return;
   }
 
-  // Store recent projects
-  settings.set(
-    "recentProjects",
-    []
-      .concat(settings.get("recentProjects") || [], projectPath)
-      .reverse()
-      .filter((filename, index, arr) => arr.indexOf(filename) === index) // Only unique
-      .reverse()
-      .slice(-10)
-  );
-  app.addRecentDocument(projectPath);
+  addRecentProject(projectPath); 
 
   const oldMainWindow = mainWindow;
   await createWindow(projectPath);
@@ -474,4 +481,68 @@ const openProject = async projectPath => {
     oldMainWindow.close();
     mainWindow = newMainWindow;
   }
+};
+
+const addRecentProject = (projectPath) => {
+  // Store recent projects
+  settings.set(
+    "recentProjects",
+    []
+      .concat(settings.get("recentProjects") || [], projectPath)
+      .reverse()
+      .filter((filename, index, arr) => arr.indexOf(filename) === index) // Only unique
+      .reverse()
+      .slice(-10)
+  );
+  app.addRecentDocument(projectPath);
+}
+
+const saveAsProjectPicker = async () => {
+  const files = dialog.showSaveDialog({
+    filters: [
+      {
+        name: "Projects",
+        extensions: ["gbsproj", "json"]
+      }
+    ]
+  });
+  if (files) {
+    saveAsProject(files);
+  }
+};
+
+const saveAsProject = async saveAsPath => {
+  const l10n = require("./lib/helpers/l10n").default;
+
+  const projectName = Path.parse(saveAsPath).name;
+  const projectDir = Path.join(Path.dirname(saveAsPath), projectName);
+  const projectPath = Path.join(projectDir, Path.basename(saveAsPath));
+
+  let projectExists;
+  try {
+    await stat(projectPath);
+    projectExists = true;
+  } catch (e) {
+    projectExists = false;
+  }
+  if(projectExists) {
+      dialog.showErrorBox(
+          l10n("ERROR_PROJECT_ALREADY_EXISTS"),
+          l10n("ERROR_PLEASE_SELECT_A_DIFFERENT_LOCATION")
+      );
+      return;
+  }
+
+  const ext = Path.extname(saveAsPath);
+  if (validProjectExt.indexOf(ext) === -1) {
+    dialog.showErrorBox(
+        l10n("ERROR_INVALID_FILE_TYPE"),
+        l10n("ERROR_OPEN_GBSPROJ_FILE")
+    );
+    return;
+  }
+
+  addRecentProject(projectPath);
+
+  mainWindow && mainWindow.webContents.send("save-as-project", projectPath);
 };
