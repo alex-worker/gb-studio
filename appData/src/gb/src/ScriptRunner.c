@@ -19,6 +19,8 @@ SCRIPT_CMD_FN last_fn;
 
 UBYTE script_stack_ptr = 0;
 UWORD script_stack[STACK_SIZE] = {0};
+UBYTE script_bank_stack[STACK_SIZE] = {0};
+UWORD script_start_stack[STACK_SIZE] = {0};
 
 SCRIPT_CMD script_cmds[] = {
     {Script_End_b, 0},                // 0x00
@@ -41,9 +43,9 @@ SCRIPT_CMD script_cmds[] = {
     {Script_ShowSprites_b, 0},        // 0x11
     {Script_HideSprites_b, 0},        // 0x12
     {Script_PlayerSetSprite_b, 1},    // 0x13
-    {Script_ActorShow_b, 1},          // 0x14
-    {Script_ActorHide_b, 1},          // 0x15
-    {Script_ActorSetEmote_b, 2},      // 0x16
+    {Script_ActorShow_b, 0},          // 0x14
+    {Script_ActorHide_b, 0},          // 0x15
+    {Script_ActorSetEmote_b, 1},      // 0x16
     {Script_CameraShake_b, 1},        // 0x17
     {Script_Noop_b, 0},               // 0x18
     {Script_ShowOverlay_b, 3},        // 0x19
@@ -62,7 +64,7 @@ SCRIPT_CMD script_cmds[] = {
     {Script_IfInput_b, 3},            // 0x26
     {Script_Choice_b, 4},             // 0x27
     {Script_ActorPush_b, 1},          // 0x28
-    {Script_IfActorPos_b, 5},         // 0x29
+    {Script_IfActorPos_b, 4},         // 0x29
     {Script_LoadData_b, 0},           // 0x2A
     {Script_SaveData_b, 0},           // 0x2B
     {Script_ClearData_b, 0},          // 0x2C
@@ -101,7 +103,20 @@ SCRIPT_CMD script_cmds[] = {
     {Script_RemoveInputScript_b, 1},  // 0x4D
     {Script_ActorSetFrame_b, 1},      // 0x4E
     {Script_ActorSetFlip_b, 1},       // 0x4F
-    {Script_TextMulti_b, 1}           //0x50
+    {Script_TextMulti_b, 1},          // 0x50
+    {Script_ActorSetFrameToVal_b, 2}, // 0x51
+    {Script_VariableAddFlags_b, 3},   // 0x52
+    {Script_VariableClearFlags_b, 3}, // 0x53
+    {Script_SoundStartTone_b, 2},     // 0x54
+    {Script_SoundStopTone_b, 0},      // 0x55
+    {Script_SoundPlayBeep_b, 1},      // 0x56
+    {Script_SoundPlayCrash_b, 0},     // 0x57
+    {Script_SetTimerScript_b, 4},     // 0x58
+    {Script_ResetTimer_b, 0},         // 0x59
+    {Script_RemoveTimerScript_b, 0},  // 0x5A
+    {Script_TextWithAvatar_b, 3},     // 0x5B
+    {Script_TextMenu_b, 6},           // 0x5C
+    {Script_ActorSetCollisions_b, 1}  // 0x5D
 };
 
 UBYTE ScriptLastFnComplete();
@@ -228,12 +243,17 @@ UBYTE ScriptLastFnComplete()
     return TRUE;
   }
 
+  if (last_fn == Script_TextMenu_b && UIIsClosed())
+  {
+    return TRUE;
+  }
+
   if (last_fn == Script_OverlayMoveTo_b && UIAtDest())
   {
     return TRUE;
   }
 
-  if (last_fn == Script_AwaitInput_b && ((joy & await_input) != 0))
+  if (last_fn == Script_AwaitInput_b && SceneAwaitInputPressed())
   {
     return TRUE;
   }
@@ -247,6 +267,11 @@ UBYTE ScriptLastFnComplete()
   if (last_fn == Script_CameraLock_b && SceneCameraAtDest())
   {
     camera_settings = CAMERA_LOCK_FLAG;
+    return TRUE;
+  }
+
+  if (last_fn == Script_TextWithAvatar_b && UIIsClosed())
+  {
     return TRUE;
   }
 

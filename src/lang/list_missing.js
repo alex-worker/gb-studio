@@ -1,3 +1,6 @@
+/* eslint-disable global-require */
+/* eslint-disable import/no-dynamic-require */
+/* eslint-disable no-console */
 const locale = process.argv[2];
 
 if (!locale) {
@@ -9,7 +12,7 @@ if (!locale) {
   process.exit();
 }
 
-console.log("Check for missing translation keys in " + locale + ".json");
+console.log(`Check for missing translation keys in ${locale}.json`);
 console.log("");
 
 const en = require(`${__dirname}/en.json`);
@@ -17,7 +20,7 @@ let translation = {};
 try {
   translation = require(`${__dirname}/${locale}.json`);
 } catch (e) {
-  console.log("Translation file not found " + locale + ".json");
+  console.log(`Translation file not found ${locale}.json`);
   process.exit();
 }
 const missing = Object.keys(en).reduce((memo, key) => {

@@ -1,10 +1,8 @@
-import electron, { dialog } from "electron";
+import { dialog, shell } from "electron";
 import semver from "semver";
 import Octokit from "@octokit/rest";
-import open from "open";
-import meta from "../../../package.json";
 import settings from "electron-settings";
-import l10n from "./l10n";
+import meta from "../../../package.json";
 
 const github = new Octokit();
 const oneHour = 60 * 60 * 1000;
@@ -51,6 +49,8 @@ export const needsUpdate = async () => {
 };
 
 export const checkForUpdate = async force => {
+  // eslint-disable-next-line global-require
+  const l10n = require("./l10n").default;
   if (force) {
     // If manually checking for updates using menu, clear previous settings
     settings.set("dontCheckForUpdates", false);
@@ -62,7 +62,7 @@ export const checkForUpdate = async force => {
     try {
       latestVersion = await getLatestVersion();
       if (!latestVersion) {
-        throw "NO_LATEST";
+        throw new Error("NO_LATEST");
       }
     } catch (e) {
       // If explicitly asked to check latest version and checking failed
@@ -84,7 +84,6 @@ export const checkForUpdate = async force => {
     if (await needsUpdate()) {
       if (settings.get("dontNotifyUpdatesForVersion") === latestVersion) {
         // User has chosen to ignore this version so don't show any details
-        console.log("Ignoring version " + latestVersion);
         return;
       }
 
@@ -112,29 +111,27 @@ export const checkForUpdate = async force => {
           settings.set("dontCheckForUpdates", true);
         }
         if (buttonIndex === 0) {
-          open("https://www.gbstudio.dev/download/");
+          shell.openExternal("https://www.gbstudio.dev/download/");
         } else if (buttonIndex === 2) {
           // Ingore this version but notify for next
           settings.set("dontNotifyUpdatesForVersion", latestVersion);
         }
       });
-    } else {
-      if (force) {
-        // If specifically asked to check for updates need to show message
-        // that you're all up to date
-        const dialogOptions = {
-          type: "info",
-          buttons: [l10n("DIALOG_OK")],
-          defaultId: 0,
-          title: l10n("DIALOG_UP_TO_DATE"),
-          message: l10n("DIALOG_UP_TO_DATE"),
-          detail: l10n("DIALOG_NEWEST_VERSION_AVAILABLE", {
-            version: latestVersion
-          })
-        };
+    } else if (force) {
+      // If specifically asked to check for updates need to show message
+      // that you're all up to date
+      const dialogOptions = {
+        type: "info",
+        buttons: [l10n("DIALOG_OK")],
+        defaultId: 0,
+        title: l10n("DIALOG_UP_TO_DATE"),
+        message: l10n("DIALOG_UP_TO_DATE"),
+        detail: l10n("DIALOG_NEWEST_VERSION_AVAILABLE", {
+          version: latestVersion
+        })
+      };
 
-        dialog.showMessageBox(dialogOptions);
-      }
+      dialog.showMessageBox(dialogOptions);
     }
   }
 };

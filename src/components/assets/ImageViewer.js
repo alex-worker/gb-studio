@@ -1,9 +1,11 @@
 import React, { Component } from "react";
+import PropTypes from "prop-types";
 import { connect } from "react-redux";
 import Button from "../library/Button";
 import * as actions from "../../actions";
 import l10n from "../../lib/helpers/l10n";
 import { divisibleBy8 } from "../../lib/helpers/8bit";
+import { zoomForSection, assetFilename } from "../../lib/helpers/gbstudio";
 
 class ImageViewer extends Component {
   componentDidMount() {
@@ -15,24 +17,25 @@ class ImageViewer extends Component {
   }
 
   onMouseWheel = e => {
+    const { zoomIn, zoomOut, section } = this.props;
     if (e.ctrlKey) {
       e.preventDefault();
-      if (event.wheelDelta > 0) {
-        this.props.zoomIn(this.props.section, event.deltaY * 0.5);
+      if (e.wheelDelta > 0) {
+        zoomIn(section, e.deltaY * 0.5);
       } else {
-        this.props.zoomOut(this.props.section, event.deltaY * 0.5);
+        zoomOut(section, e.deltaY * 0.5);
       }
     }
   };
 
   onOpen = () => {
-    const { projectRoot, file, folder } = this.props;
-    this.props.openFolder(`${projectRoot}/assets/${folder}/${file.filename}`);
+    const { projectRoot, file, folder, openFolder } = this.props;
+    openFolder(`${projectRoot}/assets/${folder}/${file.filename}`);
   };
 
   getWarnings = () => {
     const { file, folder } = this.props;
-    let warnings = [];
+    const warnings = [];
     if (file && folder === "backgrounds") {
       if (file.imageWidth < 160 || file.imageHeight < 144) {
         warnings.push(l10n("WARNING_BACKGROUND_TOO_SMALL"));
@@ -48,21 +51,23 @@ class ImageViewer extends Component {
   };
 
   render() {
-    const { projectRoot, file, folder, zoomRatio, editor } = this.props;
+    const { projectRoot, file, folder, zoom, sidebarWidth } = this.props;
     const warnings = this.getWarnings();
     return (
-      <div className="ImageViewer" style={{ right: editor.sidebarWidth }}>
+      <div className="ImageViewer" style={{ right: sidebarWidth }}>
         <div className="ImageViewer__Content">
           {file && (
             <div
               className="ImageViewer__Image"
-              style={{ transform: `scale(${zoomRatio})` }}
+              style={{ transform: `scale(${zoom})` }}
             >
               <img
                 alt=""
-                src={`${projectRoot}/assets/${folder}/${
-                  file.filename
-                }?v=${file._v || 0}`}
+                src={`${assetFilename(
+                  projectRoot,
+                  folder,
+                  file
+                )}?_v=${file._v || 0}`}
               />
             </div>
           )}
@@ -70,7 +75,7 @@ class ImageViewer extends Component {
         {file && (
           <div
             className="ImageViewer__Edit"
-            style={{ right: editor.sidebarWidth + 10 }}
+            style={{ right: sidebarWidth + 10 }}
           >
             <Button onClick={this.onOpen}>{l10n("ASSET_EDIT")}</Button>
           </div>
@@ -79,6 +84,7 @@ class ImageViewer extends Component {
           <div className="ImageViewer__Warning">
             <ul>
               {warnings.map((warning, index) => (
+                // eslint-disable-next-line react/no-array-index-key
                 <li key={index}>{warning}</li>
               ))}
             </ul>
@@ -89,26 +95,36 @@ class ImageViewer extends Component {
   }
 }
 
+ImageViewer.propTypes = {
+  projectRoot: PropTypes.string.isRequired,
+  folder: PropTypes.string.isRequired,
+  file: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    filename: PropTypes.string.isRequired
+  }),
+  section: PropTypes.string.isRequired,
+  zoom: PropTypes.number.isRequired,
+  sidebarWidth: PropTypes.number.isRequired,
+  zoomIn: PropTypes.func.isRequired,
+  zoomOut: PropTypes.func.isRequired,
+  openFolder: PropTypes.func.isRequired
+};
+
+ImageViewer.defaultProps = {
+  file: {}
+};
+
 function mapStateToProps(state) {
-  const { id, section } = state.navigation;
-  const folder =
-    section === "backgrounds"
-      ? "backgrounds"
-      : section === "sprites"
-      ? "sprites"
-      : "ui";
-  const zoom =
-    section === "backgrounds"
-      ? state.editor.zoomImage
-      : section === "sprites"
-      ? state.editor.zoomSprite
-      : state.editor.zoomUI;
+  const { section } = state.navigation;
+  const folder = section;
+  const zoom = zoomForSection(section, state.editor);
+  const { filesSidebarWidth: sidebarWidth } = state.settings;
   return {
     projectRoot: state.document && state.document.root,
     folder,
     section,
-    zoomRatio: (zoom || 100) / 100,
-    editor: state.editor
+    zoom: (zoom || 100) / 100,
+    sidebarWidth
   };
 }
 

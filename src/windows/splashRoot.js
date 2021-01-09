@@ -1,17 +1,34 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import { AppContainer } from "react-hot-loader";
-import settings from "electron-settings";
-import { ipcRenderer } from "electron";
+import Splash from "../components/app/Splash";
 import "../lib/electron/handleFullScreen";
-const { systemPreferences } = require("electron").remote;
+import "../lib/helpers/handleTheme";
 
-ipcRenderer.on("update-theme", event => {
-  updateMyAppTheme();
+window.addEventListener("error", (error) => {
+  if(error.message.indexOf("dead code elimination") > -1) {
+    return true;
+  }
+  error.stopPropagation();
+  error.preventDefault();
+  document.body.innerHTML = `<div class="GlobalError">
+    <div class="GlobalError__Content">
+      <h2>${error.message}</h2>
+      <p>
+        ${error.filename}L:${error.lineno}C:${error.colno}
+      </p>     
+      <div class="GlobalError__StackTrace">
+        ${error.error && error.error.stack && error.error.stack.split("\n").map(line => (
+          `<div>${line}</div>`
+        )).join("")}
+      </div>
+    </div>       
+    </div>
+  </div>`
+  return false;
 });
 
 const render = () => {
-  const Splash = require("../components/app/Splash").default;
   ReactDOM.render(
     <AppContainer>
       <Splash />
@@ -21,26 +38,6 @@ const render = () => {
 };
 
 render();
-
-function updateMyAppTheme() {
-  const darkMode =
-    settings.get("theme") === "dark" ||
-    (settings.get("theme") === undefined &&
-      systemPreferences.isDarkMode &&
-      systemPreferences.isDarkMode());
-  const themeStyle = document.getElementById("theme");
-  themeStyle.href = "../styles/" + (darkMode ? "theme-dark.css" : "theme.css");
-}
-
-if (systemPreferences.subscribeNotification) {
-  systemPreferences.subscribeNotification(
-    "AppleInterfaceThemeChangedNotification",
-    function theThemeHasChanged() {
-      updateMyAppTheme();
-    }
-  );
-}
-updateMyAppTheme();
 
 if (module.hot) {
   module.hot.accept(render);

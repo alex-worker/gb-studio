@@ -15,6 +15,7 @@ void SceneUpdate_b();
 void SceneSetEmote_b(UBYTE actor, UBYTE type);
 UBYTE SceneIsEmoting_b();
 UBYTE SceneCameraAtDest_b();
+UBYTE SceneAwaitInputPressed_b();
 void SceneRenderActor_b(UBYTE i);
 
 POS map_next_pos;
@@ -33,6 +34,11 @@ UBYTE shake_time = 0;
 UBYTE scene_width;
 UBYTE scene_height;
 BANK_PTR input_script_ptrs[NUM_INPUTS] = {{0}};
+UBYTE timer_script_duration = 0;
+UBYTE timer_script_time = 0;
+BANK_PTR timer_script_ptr = {0};
+UBYTE scroll_x;
+UBYTE scroll_y;
 
 void SceneInit()
 {
@@ -119,6 +125,15 @@ UBYTE SceneCameraAtDest()
   at_dest = SceneCameraAtDest_b();
   POP_BANK;
   return at_dest;
+}
+
+UBYTE SceneAwaitInputPressed()
+{
+  UBYTE pressed;
+  PUSH_BANK(scene_bank);
+  pressed = SceneAwaitInputPressed_b();
+  POP_BANK;
+  return pressed;
 }
 
 void SceneRenderActor(UBYTE i)

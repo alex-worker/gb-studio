@@ -1,12 +1,12 @@
 import childProcess from "child_process";
-import is from "electron-is";
-import path from "path";
 import { remote } from "electron";
 import fs from "fs-extra";
 import { buildToolsRoot } from "../../consts";
 import copy from "../helpers/fsCopy";
 import buildMakeBat from "./buildMakeBat";
+import { hexDec } from "../helpers/8bit";
 import getTmp from "../helpers/getTmp";
+import { isMBC1 } from "./helpers"
 
 const HEADER_TITLE = 0x134;
 const HEADER_CHECKSUM = 0x14d;
@@ -25,6 +25,13 @@ const setROMTitle = async (filename, title) => {
   await fs.writeFile(filename, await patchROM(romData));
 };
 
+const convertHexTo15BitRGB = hex => {
+  const r = Math.floor(hexDec(hex.substring(0, 2)) * (32 / 256));
+  const g = Math.floor(hexDec(hex.substring(2, 4)) * (32 / 256));
+  const b = Math.max(1, Math.floor(hexDec(hex.substring(4, 6)) * (32 / 256)));
+  return `RGB(${r}, ${g}, ${b})`;
+};
+
 const patchROM = romData => {
   let checksum = 0;
   let headerChecksum = 0;
@@ -40,14 +47,16 @@ const patchROM = romData => {
   // Recalculate cart checksum
   for (let i = 0; i < romData.length; i++) {
     if (i !== GLOBAL_CHECKSUM && i !== GLOBAL_CHECKSUM + 1) {
-      checksum = checksum + view.getUint8(i);
+      checksum += view.getUint8(i);
     }
   }
 
   view.setUint16(GLOBAL_CHECKSUM, checksum, false);
 
-  return romData
-}
+  return romData;
+};
+
+let firstBuild = true;
 
 const makeBuild = ({
   buildType = "rom",
@@ -57,7 +66,8 @@ const makeBuild = ({
   warnings = () => {}
 } = {}) => {
   return new Promise(async (resolve, reject) => {
-    let env = Object.create(process.env);
+    const env = Object.create(process.env);
+    const { settings } = data;
 
     const buildToolsPath = `${buildToolsRoot}/${process.platform}-${
       process.arch
@@ -73,17 +83,52 @@ const makeBuild = ({
       await fs.ensureSymlink(buildToolsPath, tmpBuildToolsPath);
     } catch (e) {
       await copy(buildToolsPath, tmpBuildToolsPath, {
-        overwrite: false
+        overwrite: firstBuild
       });
     }
+    
+    firstBuild = false;
 
     env.PATH = [`${tmpBuildToolsPath}/gbdk/bin`, env.PATH].join(":");
     env.GBDKDIR = `${tmpBuildToolsPath}/gbdk/`;
-    env.CART_TYPE = parseInt(data.settings.cartType || "1B", 16);
+
+    env.CART_TYPE = parseInt(settings.cartType || "1B", 16);
     env.TMP = getTmp();
     env.TEMP = getTmp();
+    
+    // Modify game.h to overide color palette
+    let gameHeader = await fs.readFile(`${buildRoot}/include/game.h`, "utf8");
+    if (settings.customColorsEnabled) {
+      gameHeader = gameHeader
+        .replace(/RGB\(29, 31, 28\)/g, convertHexTo15BitRGB(settings.customColorsWhite))
+        .replace(/RGB\(22, 30, 17\)/g, convertHexTo15BitRGB(settings.customColorsLight))
+        .replace(/RGB\(10, 19, 15\)/g, convertHexTo15BitRGB(settings.customColorsDark))
+        .replace(/RGB\(4, 5, 10\)/g, convertHexTo15BitRGB(settings.customColorsBlack));
+    }
+    if (!(settings.customColorsEnabled || settings.gbcFastCPUEnabled)) {
+      gameHeader = gameHeader.replace(/#define CUSTOM_COLORS/g, '');
+    }
+    if (!settings.gbcFastCPUEnabled) {
+      gameHeader = gameHeader.replace(/#define FAST_CPU/g, '');
+    }
+    if(isMBC1(settings.cartType)) {
+      gameHeader = gameHeader.replace(/_MBC5/g, '_MBC1');
+    }
+    await fs.writeFile(`${buildRoot}/include/game.h`, gameHeader, "utf8");
 
-    const makeBat = await buildMakeBat(buildRoot, { CART_TYPE: env.CART_TYPE });
+    // Remove GBC Rombyte Offset from Makefile (OSX/Linux) if custom colors and fast CPU are not enabled
+    if (process.platform !== "win32" && !settings.customColorsEnabled && !settings.gbcFastCPUEnabled)
+    {
+      let makeFile = await fs.readFile(`${buildRoot}/Makefile`, "utf8");
+      makeFile = makeFile.replace("-Wl-yp0x143=0x80", "");
+      await fs.writeFile(`${buildRoot}/Makefile`, makeFile, "utf8");
+    }
+
+    const makeBat = await buildMakeBat(buildRoot, {
+      CART_TYPE: env.CART_TYPE,
+      customColorsEnabled: settings.customColorsEnabled,
+      gbcFastCPUEnabled: settings.gbcFastCPUEnabled
+    });
     await fs.writeFile(`${buildRoot}/make.bat`, makeBat);
 
     const command = process.platform === "win32" ? "make.bat" : "make";
@@ -95,31 +140,34 @@ const makeBuild = ({
       shell: true
     };
 
-    let child = childProcess.spawn(command, args, options, {
+    const child = childProcess.spawn(command, args, options, {
       encoding: "utf8"
     });
 
-    child.on("error", function(err) {
+    child.on("error", err => {
       warnings(err.toString());
     });
 
-    child.stdout.on("data", function(data) {
-      const lines = data.toString().split("\n");
+    child.stdout.on("data", childData => {
+      const lines = childData.toString().split("\n");
       lines.forEach(line => {
         progress(filterLogs(line));
       });
     });
 
-    child.stderr.on("data", function(data) {
-      const lines = data.toString().split("\n");
+    child.stderr.on("data", childData => {
+      const lines = childData.toString().split("\n");
       lines.forEach(line => {
         warnings(line);
       });
     });
 
-    child.on("close", async function(code) {
-      if (code == 0) {
-        await setROMTitle(`${buildRoot}/build/rom/game.gb`, data.name.toUpperCase());
+    child.on("close", async code => {
+      if (code === 0) {
+        await setROMTitle(
+          `${buildRoot}/build/rom/game.gb`,
+          data.name.toUpperCase()
+        );
         resolve();
       } else reject(code);
     });
